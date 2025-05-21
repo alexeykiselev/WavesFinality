@@ -5,11 +5,7 @@
 
 #show: ieee.with(
   title: [Improving Finality in Waves: Protocol Enhancements and Guarantees],
-  abstract: [
-    Fast finality is a key advantage of modern blockchains, as the user experience is directly affected by how quickly blocks are finalized.  
-    In this paper, we present enhancements to the Waves Proof-of-Stake protocol that improve finality by leveraging the voting power of balances actively validating blocks but not currently generating them.  
-    We introduce the design of a new finality protocol, demonstrate its desirable properties, and analyze its resilience against common attacks and prolonged network forks.
-  ],
+  abstract: [Fast finality is a key advantage of modern blockchains, as the user experience is directly affected by how quickly blocks are finalized. In this paper, we present enhancements to the Waves Proof-of-Stake protocol that improve finality by leveraging the voting power of balances actively validating blocks but not currently generating them. We introduce the design of a new finality protocol, demonstrate its desirable properties, and analyze its resilience against common attacks and prolonged network forks.],
   authors: (
     (
       name: "Alexey Kiselev",
@@ -122,8 +118,8 @@ To mitigate this, we propose forming an Explicit Set of Generators.
 == Endorsement Network Message
 #todo[Describe the endorsement message format and its validation process.]
 
-== Block and Microblock Structure Updates
-#todo[Describe the additions to block and microblock structures and how backward compatibility is maintained.]
+== Block and Micro-block Structure Updates
+#todo[Describe the additions to block and micro-block structures and how backward compatibility is maintained.]
 
 == Generator Set Tracker
 #todo[Describe the implementation details of the Generator Set.]
