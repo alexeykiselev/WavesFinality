@@ -3,7 +3,9 @@
 
 #let todo=inline-note.with(rect: rect.with(inset: 1em, radius: 0.5em), fill: orange.lighten(80%))
 
+#set page(numbering: "1")
 #show: ieee.with(
+  paper-size: "a4", 
   title: [Improving Finality in Waves: Protocol Enhancements and Guarantees],
   abstract: [Fast finality is a key advantage of modern blockchains, as the user experience is directly affected by how quickly blocks are finalized. In this paper, we present enhancements to the Waves Proof-of-Stake protocol that improve finality by leveraging the voting power of balances actively validating blocks but not currently generating them. We introduce the design of a new finality protocol, demonstrate its desirable properties, and analyze its resilience against common attacks and prolonged network forks.],
   authors: (
@@ -11,6 +13,11 @@
       name: "Alexey Kiselev",
       organization: [Waves Foundation],
       email: "akiselev@uniqsoft.ae"
+    ),
+    (
+      name: "Sergey Nazarov",
+      organization: [Waves Foundation],
+      email: "snazarov@units.network"
     ),
     (
       name: "Sasha Ivanov",
@@ -23,7 +30,8 @@
   figure-supplement: [Fig.],
 )
 
-#note-outline()
+#outline(depth: 2)
+//#note-outline()
 
 = Introduction
 
@@ -143,7 +151,7 @@ In this way, finality can closely track the blockchain tip, lagging behind by at
 Fast finality must not compromise the network’s ability to continue producing new blocks. For this reason, the proposed mechanism is intentionally designed to be _optional and supplementary_.
 Failures in this mechanism may delay block finalization, but they do not interfere with the ability of generators to produce new blocks.
 
-The only condition that could halt the network is the failure to assemble a valid Generator Set. Even in such cases, a fallback mode can be implemented to allow the network to continue functioning with the additional functionality fully disabled.
+The only condition that could halt the network is the failure to assemble a valid Generator Set. Even in such cases, a fallback mode, triggered when the Generator Set is empty, can be implemented to allow the network to continue functioning with the additional functionality fully disabled.
 
 Furthermore, the mechanism must preserve the network’s ability to _split_ in the event of severe network disruptions, and more importantly, to _merge_ back once those issues are resolved.
 To ensure this, we introduce a well-defined procedure for excluding generators from the Generator Set and conduct simulation-based analysis to evaluate its behavior under partition and recovery scenarios.
@@ -356,7 +364,11 @@ However, this attack is not possible because Generation Commitment Transactions 
 
 
 = Simulation and Evaluation
-#todo[Provide an overview of the finality simulation.]
+
+To evaluate the proposed finality model for Waves, we conducted two simulation experiments. In the first, we evaluate how many blocks are required to achieve finality under conditions similar to the actual Waves MainNet balance distribution.
+
+In the second experiment, we explore different approaches to mitigating the consequences of a long-term chain split. We demonstrate that the proposed model can survive such situations and enable chain reunion if the conditions are resolved within a matter of days.
+
 
 == Waves Finality Model
 
@@ -364,7 +376,7 @@ This model evaluates the finality process in the Waves blockchain. By simulating
 
 === Blocks Data
 
-The block data is generated using the utility [`waves-delays-generator`](https://github.com/alexeykiselev/waves-delays-generator). This utility takes as input a list of generator accounts with real balances captured from MainNet in March 2025.
+The block data is generated using the utility #link("https://github.com/alexeykiselev/waves-delays-generator")[`waves-delays-generator`]. This utility takes as input a list of generator accounts with real balances captured from MainNet in March 2025.
 
 For each generator, a random key pair is generated and associated with its balance. At each simulation step, a hit source (VRF) is generated for each generator, and the delay from the previous block is calculated and recorded in the output file.
 
@@ -380,10 +392,10 @@ A threshold of 300 milliseconds is used to filter eligible alternative blocks. T
 
 === Finality Model Simulation
 
-A block is considered final if it receives at least 2/3 of the total generation balances as votes.
+A block is considered final if it receives at least $2/3$ of the total generation balances as votes.
 
 Generators are divided into three groups:
-- _Block generators_: Generators that produce the block with the minimum delay.
+- _Block generator_: A generator that produces the block with the minimum delay.
 - _Alternative generators_: Generators that produce alternative blocks within the delay threshold.
 - _Non-participating generators_: Generators whose delays exceed the threshold and are considered non-participating in block generation at this height.
 
@@ -402,9 +414,10 @@ Finally, for each block, we calculate how many additional blocks are needed unti
 
 #figure(
   image("finalization.png", width: 100%),
-  caption: [Finalization.],
+  caption: [Finalization: Number of Blocks Required to Achieve Finality],
 ) <finalization>
 
+As you can see, the majority of blocks are finalized in 1 block. However, in cases where the network endorses multiple competing blocks, finality is achieved within 2 blocks.
 
 = Graceful Chain Splitting
 
@@ -412,97 +425,114 @@ In this analysis, we evaluate the scenario of an _irreparable network split_. In
 
 == How Generator Commitment Works
 
-To become a generator on the Waves blockchain, an account must have a sufficient balance and issue a _Generation Commitment Transaction_. This transaction specifies two key parameters: the start height and the end height of the commitment. 
-
+To become a generator on the Waves blockchain, an account must hold a sufficient balance and issue a _Generation Commitment Transaction_.
+This transaction specifies two key parameters: the start height and the duration of the commitment.
 - The _start height_ allows generators to submit their commitment transaction in advance.
-- The _end height_ enforces a mandatory renewal of commitments, ensuring that inactive or unreachable generators are eventually excluded from the generation process.
+- The _duration_ enforces mandatory renewal of commitments, ensuring that inactive or unreachable generators are eventually excluded from the generation process.
 
-Additionally, the duration of a commitment is bounded by configurable _lower_ and _upper_ limits.
+The _duration_ parameter can be defined either explicitly or implicitly. In the former case, the duration is specified within bounds defined by _lower_ and _upper_ limits. In the latter case, the duration is fixed and constant for all commitments.
+
 
 == Models
 
-We evaluate two models for the expiration and renewal of generator commitments:
+We evaluate three models for the expiration and renewal of generator commitments:
 
-=== Synchronized Commitments Model
++ Synchronized Commitments Model \
+  This model naturally emerges at the moment the commitment mechanism is introduced. Since the new functionality is activated at a specific block height, all active generators issue their first commitments to start at the same height, but with varying durations.
 
-This model naturally emerges at the moment of the introduction of the commitment mechanism. Since the new functionality will be activated at a specific block height, all active generators will issue their first commitments simultaneously. Therefore, all initial commitment periods will start at the same height.
++ Randomized Commitment Start Model \
+  Over time, the initial synchronization degrades as:
+  - New generators join and issue commitments at arbitrary times.
+  - Existing generators may miss renewal deadlines and re-commit asynchronously.
+  As a result, commitment start times become naturally randomized across the generator set.
 
-=== Randomized Commitment Starts Model
++ Synchronized, Equal-Duration Commitments Model \
+  In this model, all generators commit at the same start height and use the same fixed commitment duration. However, some may renew in advance while others may not, leading to divergence in expiration after a chain split.
 
-Over time, the initial synchronization will blur as:
-- New generators join and issue commitments at arbitrary times.
-- Existing generators may miss commitment renewal deadlines and later re-commit asynchronously.
-
-This results in a model where commitment start times become naturally randomized across the set of generators.
-
-In the following sections, we will analyze how these models impact the restoration of independent finality in the event of a long-term network split.
-
+  
 == Model Explanation
 
-After the network split, the Generators Set is divided into two partitions: $P_1(t)$ and $P_2(t)$.
-The number of generators present on both forks after time $t$ is given by:
+After the network split, the generator set is divided into two partitions: $P_1(t)$ and $P_2(t)$.
+The number of generators active on both forks at time $t$ is given by:
 
-#todo[Fix formula:$I(t) = |P_1(t)  P_2(t)|$]
+$ I(t) = |P_1(t) inter P_2(t)| $
 
 Finality becomes possible if:
 
-$I(t) < (1 - f) dot N$
+$ I(t) < (1 - f) dot N $
 
 where:
 - $f$ is the required fraction for finality (e.g., $f = frac(2, 3)$ in Waves).
 - $N$ is the total number of generators.
 
-Once the intersection drops below $frac(1,3)$ of generators, the forks become independent in terms of finality, meaning that each can safely finalize its own chain.
+Once the intersection falls below $frac(1, 3)$ of the generators, the forks become independent in terms of finality, meaning that each can safely finalize its own chain. From this point on, rejoining the forks becomes impossible under the finality rules.
 
-Both models will be evaluated using a dataset of real MainNet generator balances as of March 2025. 
+All models are evaluated using a dataset of real MainNet generator balances as of March 2025.
 This dataset is provided in the `mainnet.generators.parquet` file.
+
 
 == Synchronized Commitments Model
 
+All generators commit at block height 0, but the commitment duration is randomly selected between 10,000 and 20,000 blocks.
+
 #figure(
   image("probability_1.png", width: 100%),
-  caption: [],
+  caption: [Probability to Regain Independent Finality (Synchronized Commitments, Random Split)],
 )
 
 #figure(
   image("decay_1.png", width: 100%),
-  caption: [],
+  caption: [Decay of Shared Stake Over Time (Synchronized Commitments, Random Split)],
 )
 
-== Randomized Commitment Starts Model
+The model shows that independent finality is achieved with 95% confidence after approximately 15,000 blocks, or about 11 days from the start of the split.
+
+== Randomized Commitment Start Model
+
+Generators commit at random block heights, with commitment durations randomly selected between 10,000 and 20,000 blocks.
+
 #figure(
   image("probability_2.png", width: 100%),
-  caption: [],
+  caption: [Probability to Regain Independent Finality (Randomized Starts)],
 )
 
 #figure(
   image("decay_2.png", width: 100%),
-  caption: [],
+  caption: [Decay of Shared Stake Over Time (Randomized Starts)],
 )
 
-== Synchronized, Equal-Length Commitments Model
+In this setup, independent finality is achieved after approximately 13,000 blocks, or about 9 days, with 95% confidence.
 
-In this model all commitments have the same constant duration ($D$) and all generators start their generation periods at the same time.
-This model introduces the binary variation of in expiration times:
+
+== Synchronized, Equal-Duration Commitments Model
+
+In this model, all generators begin their generation periods at the same time, and each commitment has the same fixed duration ($D = 10000$ blocks).  
+The variation arises from whether or not a generator has renewed its commitment before the network split:
 - If the generator renewed for the next period, it's generation commitment expires in $2D$
 - If not renewed it expires in $D$
 
-
 #figure(
   image("probability_3.png", width: 100%),
-  caption: [],
+  caption: [Probability to Regain Finality (Equal Commitments with Probabilistic Renewal)],
 )
 
 #figure(
   image("decay_3.png", width: 100%),
-  caption: [],
+  caption: [Decay of Shared Stake Over Time (Equal Commitments with Probabilistic Renewal)],
 )
 
+The simulation shows that independent finality is achieved after approximately 16,000 blocks, or about 11 days.
 
-= Conclusion and Future Work
 
-== Summary of Results
-#todo[Write the concluding summary of the paper.]
+= Conclusion
 
-== Roadmap for Deployment
-#todo[Outline the development and deployment roadmap.]
+In this paper, we proposed a protocol extension to the Waves blockchain that introduces _Deterministic Finality_ while preserving the system’s core properties of liveness and decentralization.
+
+By incorporating an explicit Generator Set and a lightweight endorsement mechanism, the protocol allows nodes to reliably track validator participation and determine finality based on observed consensus rather than heuristics or probabilistic estimates. This design enables block finalization within one or two blocks in typical scenarios, significantly improving user confidence and integration safety for applications built on Waves.
+
+To ensure robustness in adverse conditions such as long-term network splits, we modeled the behavior of generator commitments and demonstrated through simulation that finality can be independently re-established in each fork once outdated commitments expire. We evaluated three commitment renewal models—synchronized, randomized, and synchronized with equal durations—and showed that the system recovers finality predictably within days in all cases.
+
+The protocol is designed to be backward compatible and failsafe: when the Generator Set is absent the blockchain reverts to its original probabilistic behavior without risk of consensus failure.
+
+Overall, the proposed enhancements significantly improve the finality guarantees of the Waves blockchain while maintaining its performance, openness, and adaptability to real-world network conditions.
+

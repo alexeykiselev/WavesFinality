@@ -2,4 +2,5 @@
 venv/
 **/.DS_Store
 *.png
+!white_paper/*.png
 *.pdf
